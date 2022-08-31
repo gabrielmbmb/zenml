@@ -11,7 +11,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 #  or implied. See the License for the specific language governing
 #  permissions and limitations under the License.
-"""Zen Server local deployer implementation."""
+"""Zen Server docker deployer implementation."""
 
 from typing import ClassVar, List, Optional, cast
 from zenml.config.global_config import GlobalConfiguration
@@ -24,24 +24,24 @@ from zenml.zen_server.deploy.base_deployer import (
     BaseServerDeploymentConfig,
     BaseServerDeploymentStatus,
 )
-from zenml.zen_server.deploy.local.local_zen_server import (
-    LocalZenServer,
-    LocalServerDeploymentConfig,
+from zenml.zen_server.deploy.docker.docker_zen_server import (
+    DockerZenServer,
+    DockerServerDeploymentConfig,
 )
 from zenml.zen_stores.base_zen_store import DEFAULT_USERNAME
 from zenml.zen_stores.rest_zen_store import RestZenStoreConfiguration
 
 logger = get_logger(__name__)
 
-LOCAL_PROVIDER_NAME = "local"
+DOCKER_PROVIDER_NAME = "docker"
 
-LOCAL_SERVER_SINGLETON_NAME = "local"
+DOCKER_SERVER_SINGLETON_NAME = "docker"
 
-LOCAL_DEFAULT_TIMEOUT = 30
+DOCKER_DEFAULT_TIMEOUT = 60
 
 
-class LocalServerDeploymentStatus(BaseServerDeploymentStatus):
-    """Local server deployment status.
+class DockerServerDeploymentStatus(BaseServerDeploymentStatus):
+    """Docker server deployment status.
 
     Attributes:
     """
@@ -49,22 +49,22 @@ class LocalServerDeploymentStatus(BaseServerDeploymentStatus):
     url: str
 
 
-class LocalServerDeployment(BaseServerDeployment):
-    """Local server deployment.
+class DockerServerDeployment(BaseServerDeployment):
+    """Docker server deployment.
 
     Attributes:
-        config: The local server deployment configuration.
-        status: The local server deployment status.
+        config: The docker server deployment configuration.
+        status: The docker server deployment status.
     """
 
-    config: LocalServerDeploymentConfig
-    status: LocalServerDeploymentStatus
+    config: DockerServerDeploymentConfig
+    status: DockerServerDeploymentStatus
 
 
-class LocalServerDeployer(BaseServerDeployer):
-    """Local ZenML server deployer."""
+class DockerServerDeployer(BaseServerDeployer):
+    """Docker ZenML server deployer."""
 
-    PROVIDER: ClassVar[str] = LOCAL_PROVIDER_NAME
+    PROVIDER: ClassVar[str] = DOCKER_PROVIDER_NAME
 
     def up(
         self,
@@ -72,10 +72,10 @@ class LocalServerDeployer(BaseServerDeployer):
         connect: bool = True,
         timeout: Optional[int] = None,
     ) -> None:
-        """Deploy the local ZenML server instance.
+        """Deploy the docker ZenML server instance.
 
         This starts a daemon process that runs the uvicorn server directly on
-        the local host configured to use the local SQL store.
+        the docker host configured to use the docker SQL store.
 
         Args:
             config: The server deployment configuration.
@@ -84,63 +84,63 @@ class LocalServerDeployer(BaseServerDeployer):
                 successful. If not supplied, a default timeout value of 30
                 seconds is used.
         """
-        if not isinstance(config, LocalServerDeploymentConfig):
+        if not isinstance(config, DockerServerDeploymentConfig):
             raise TypeError(
                 "Invalid server deployment configuration type. It should be a "
-                "LocalServerDeploymentConfig."
+                "DockerServerDeploymentConfig."
             )
-        local_config = cast(LocalServerDeploymentConfig, config)
+        docker_config = cast(DockerServerDeploymentConfig, config)
 
-        service = LocalZenServer.get_service()
+        service = DockerZenServer.get_service()
         if service is not None:
-            if service.config.server == local_config:
+            if service.config.server == docker_config:
                 logger.info(
-                    "The local ZenML server is already running with the same "
+                    "The docker ZenML server is already running with the same "
                     "configuration."
                 )
             else:
                 logger.info(
-                    "The local ZenML server is already running with a "
+                    "The docker ZenML server is already running with a "
                     "different configuration."
                 )
-                logger.info("Updating the local ZenML server.")
-                service.stop(timeout=timeout or LOCAL_DEFAULT_TIMEOUT)
-                service.update(local_config)
+                logger.info("Updating the docker ZenML server.")
+                service.stop(timeout=timeout or DOCKER_DEFAULT_TIMEOUT)
+                service.update(docker_config)
         else:
-            logger.info("Starting the local ZenML server.")
-            service = LocalZenServer(local_config)
+            logger.info("Starting the docker ZenML server.")
+            service = DockerZenServer(docker_config)
 
         if not service.is_running:
-            service.start(timeout=timeout or LOCAL_DEFAULT_TIMEOUT)
+            service.start(timeout=timeout or DOCKER_DEFAULT_TIMEOUT)
 
         if connect:
             self.connect(
-                LOCAL_SERVER_SINGLETON_NAME,
-                username=local_config.username,
-                password=local_config.password,
+                DOCKER_SERVER_SINGLETON_NAME,
+                username=docker_config.username,
+                password=docker_config.password,
             )
 
     def down(self, server: str, timeout: Optional[int] = None) -> None:
-        """Tear down the local ZenML server instance.
+        """Tear down the docker ZenML server instance.
 
         Args:
             server: The server deployment name or identifier.
 
         Raises:
-            KeyError: If the local server deployment is not found.
+            KeyError: If the docker server deployment is not found.
         """
 
-        service = LocalZenServer.get_service()
+        service = DockerZenServer.get_service()
         if service is None:
-            raise KeyError("The local ZenML server is not deployed.")
+            raise KeyError("The docker ZenML server is not deployed.")
 
         self.disconnect(server)
 
-        logger.info("Shutting down the local ZenML server.")
-        service.stop(timeout=timeout or LOCAL_DEFAULT_TIMEOUT)
+        logger.info("Shutting down the docker ZenML server.")
+        service.stop(timeout=timeout or DOCKER_DEFAULT_TIMEOUT)
 
     def status(self, server: str) -> BaseServerDeploymentStatus:
-        """Get the status of the local ZenML server instance.
+        """Get the status of the docker ZenML server instance.
 
         Args:
             server: The server deployment name or identifier.
@@ -148,11 +148,11 @@ class LocalServerDeployer(BaseServerDeployer):
         Returns:
             The server deployment status.
         """
-        local_server = self.get(LOCAL_SERVER_SINGLETON_NAME)
-        return local_server.status
+        docker_server = self.get(DOCKER_SERVER_SINGLETON_NAME)
+        return docker_server.status
 
     def connect(self, server: str, username: str, password: str) -> None:
-        """Connect to the local ZenML server instance.
+        """Connect to the docker ZenML server instance.
 
         Args:
             server: The server deployment name, identifier or URL.
@@ -162,31 +162,31 @@ class LocalServerDeployer(BaseServerDeployer):
 
         gc = GlobalConfiguration()
 
-        if server != LOCAL_SERVER_SINGLETON_NAME:
+        if server != DOCKER_SERVER_SINGLETON_NAME:
             raise KeyError(
-                f"The {server} local ZenML server could not be found."
+                f"The {server} docker ZenML server could not be found."
             )
 
-        service = LocalZenServer.get_service()
+        service = DockerZenServer.get_service()
         if service is None:
-            raise KeyError("The local ZenML server could not be found.")
+            raise KeyError("The docker ZenML server could not be found.")
 
         url = service.zen_server_url
         if not url:
-            raise RuntimeError("The local ZenML server is not accessible.")
+            raise RuntimeError("The docker ZenML server is not accessible.")
 
         store_config = RestZenStoreConfiguration(
             url=url, username=DEFAULT_USERNAME, password=""
         )
 
         if gc.store == store_config:
-            logger.info("ZenML is already connected to the local ZenML server.")
+            logger.info("ZenML is already connected to the docker ZenML server.")
             return
 
         gc.set_store(store_config)
 
     def disconnect(self, server: str) -> None:
-        """Disconnect from the local ZenML server instance.
+        """Disconnect from the docker ZenML server instance.
 
         Args:
             server: The server deployment name, identifier or URL.
@@ -198,31 +198,31 @@ class LocalServerDeployer(BaseServerDeployer):
             logger.info("ZenML is not currently connected to a ZenML server.")
             return
 
-        if server != LOCAL_SERVER_SINGLETON_NAME:
+        if server != DOCKER_SERVER_SINGLETON_NAME:
             raise KeyError(
-                f"The {server} local ZenML server could not be found."
+                f"The {server} docker ZenML server could not be found."
             )
 
-        service = LocalZenServer.get_service()
+        service = DockerZenServer.get_service()
         if service is None:
-            raise KeyError("The local ZenML server could not be found.")
+            raise KeyError("The docker ZenML server could not be found.")
 
         url = service.zen_server_url
         # TODO: we must be able to disconnect from a server even when it's
         # not accessible.
         if not url:
-            raise RuntimeError("The local ZenML server is not accessible.")
+            raise RuntimeError("The docker ZenML server is not accessible.")
 
         if gc.store.url != url:
             logger.info(
-                "ZenML is not currently connected to the local ZenML server."
+                "ZenML is not currently connected to the docker ZenML server."
             )
             return
 
         gc.set_default_store()
 
     def get(self, server: str) -> BaseServerDeployment:
-        """Get the local server deployment.
+        """Get the docker server deployment.
 
         Args:
             server: The server deployment name, identifier or URL.
@@ -237,23 +237,23 @@ class LocalServerDeployer(BaseServerDeployer):
 
         from zenml.services import ServiceState
 
-        if server != LOCAL_SERVER_SINGLETON_NAME:
+        if server != DOCKER_SERVER_SINGLETON_NAME:
             raise KeyError(
-                f"The {server} local ZenML server could not be found."
+                f"The {server} docker ZenML server could not be found."
             )
 
-        service = LocalZenServer.get_service()
+        service = DockerZenServer.get_service()
         if service is None:
-            raise KeyError("The local ZenML server could not be found.")
+            raise KeyError("The docker ZenML server could not be found.")
 
         service_status = service.check_status()
         gc = GlobalConfiguration()
         url = service.zen_server_url or ""
         connected = url and gc.store and gc.store.url == url
 
-        return LocalServerDeployment(
+        return DockerServerDeployment(
             config=service.config,
-            status=LocalServerDeploymentStatus(
+            status=DockerServerDeploymentStatus(
                 url=url,
                 deployed=True,
                 running=service_status[0] == ServiceState.ACTIVE,
@@ -268,7 +268,7 @@ class LocalServerDeployer(BaseServerDeployer):
             The list of server deployments.
         """
         try:
-            local_server = self.get(LOCAL_SERVER_SINGLETON_NAME)
-            return [local_server]
+            docker_server = self.get(DOCKER_SERVER_SINGLETON_NAME)
+            return [docker_server]
         except KeyError:
             return []
