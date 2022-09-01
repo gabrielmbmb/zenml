@@ -11,13 +11,13 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 #  or implied. See the License for the specific language governing
 #  permissions and limitations under the License.
-"""Implementation of a docker service endpoint."""
+"""Implementation of a containerized service endpoint."""
 
 from typing import Optional, Union
 
 from pydantic import Field
 
-from zenml.constants import DEFAULT_DOCKER_SERVICE_IP_ADDRESS
+from zenml.constants import DEFAULT_LOCAL_SERVICE_IP_ADDRESS
 from zenml.logger import get_logger
 from zenml.services.service_endpoint import (
     BaseServiceEndpoint,
@@ -34,8 +34,8 @@ from zenml.utils.networking_utils import port_available, scan_for_available_port
 logger = get_logger(__name__)
 
 
-class DockerDaemonServiceEndpointConfig(ServiceEndpointConfig):
-    """Docker daemon service endpoint configuration.
+class ContainerServiceEndpointConfig(ServiceEndpointConfig):
+    """Local daemon service endpoint configuration.
 
     Attributes:
         protocol: the TCP protocol implemented by the service endpoint
@@ -51,20 +51,20 @@ class DockerDaemonServiceEndpointConfig(ServiceEndpointConfig):
 
     protocol: ServiceEndpointProtocol = ServiceEndpointProtocol.TCP
     port: Optional[int] = None
-    ip_address: str = DEFAULT_DOCKER_SERVICE_IP_ADDRESS
+    ip_address: str = DEFAULT_LOCAL_SERVICE_IP_ADDRESS
     allocate_port: bool = True
 
 
-class DockerDaemonServiceEndpointStatus(ServiceEndpointStatus):
-    """Docker daemon service endpoint status."""
+class ContainerServiceEndpointStatus(ServiceEndpointStatus):
+    """Local daemon service endpoint status."""
 
 
-class DockerDaemonServiceEndpoint(BaseServiceEndpoint):
-    """A service endpoint exposed by a docker daemon process.
+class ContainerServiceEndpoint(BaseServiceEndpoint):
+    """A service endpoint exposed by a containerized process.
 
     This class extends the base service endpoint class with functionality
     concerning the life-cycle management and tracking of endpoints exposed
-    by external services implemented as docker daemon processes.
+    by external services implemented as containerized processes.
 
     Attributes:
         config: service endpoint configuration
@@ -72,11 +72,11 @@ class DockerDaemonServiceEndpoint(BaseServiceEndpoint):
         monitor: optional service endpoint health monitor
     """
 
-    config: DockerDaemonServiceEndpointConfig = Field(
-        default_factory=DockerDaemonServiceEndpointConfig
+    config: ContainerServiceEndpointConfig = Field(
+        default_factory=ContainerServiceEndpointConfig
     )
-    status: DockerDaemonServiceEndpointStatus = Field(
-        default_factory=DockerDaemonServiceEndpointStatus
+    status: ContainerServiceEndpointStatus = Field(
+        default_factory=ContainerServiceEndpointStatus
     )
     monitor: Optional[
         Union[HTTPEndpointHealthMonitor, TCPEndpointHealthMonitor]
