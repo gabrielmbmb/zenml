@@ -56,14 +56,9 @@ class ServiceConfig(BaseTypedModel):
 class BaseServiceMeta(BaseTypedModelMeta):
     """Metaclass responsible for registering different BaseService subclasses.
 
-    This metaclass has two main responsibilities:
-    1. register all BaseService types in the service registry. This is relevant
-    when services are deserialized and instantiated from their JSON or dict
-    representation, because their type needs to be known beforehand.
-    2. ensuring BaseService instance uniqueness by enforcing that no two
-    service instances have the same UUID value. Implementing this at the
-    constructor level guarantees that deserializing a service instance from
-    a JSON representation multiple times always returns the same service object.
+    This metaclass registers all BaseService types in the service registry. This
+    is relevant when services are deserialized and instantiated from their JSON
+    or dict representation, because their type needs to be known beforehand.
     """
 
     def __new__(
@@ -105,50 +100,6 @@ class BaseServiceMeta(BaseTypedModelMeta):
             # register the service type in the service registry
             ServiceRegistry().register_service_type(cls)
         return cls
-
-    def __call__(cls, *args: Any, **kwargs: Any) -> "BaseServiceMeta":
-        """Validate the creation of a service.
-
-        Args:
-            *args: positional arguments.
-            **kwargs: keyword arguments.
-
-        Returns:
-            the created BaseServiceMeta class.
-
-        Raises:
-            AttributeError: if the service UUID is untyped.
-            ValueError: if the service UUID is not a UUID type.
-        """
-        if not getattr(cls, "SERVICE_TYPE", None):
-            raise AttributeError(
-                f"Untyped service instances are not allowed. Please set the "
-                f"SERVICE_TYPE class attribute for {cls}."
-            )
-        uuid = kwargs.get("uuid", None)
-        if uuid:
-            if isinstance(uuid, str):
-                uuid = UUID(uuid)
-            if not isinstance(uuid, UUID):
-                raise ValueError(
-                    f"The `uuid` argument for {cls} must be a UUID instance or a "
-                    f"string representation of a UUID."
-                )
-
-            # if a service instance with the same UUID is already registered,
-            # return the existing instance rather than the newly created one
-            existing_service = ServiceRegistry().get_service(uuid)
-            if existing_service:
-                logger.debug(
-                    f"Reusing existing service '{existing_service}' "
-                    f"instead of creating a new service with the same UUID."
-                )
-                return cast("BaseServiceMeta", existing_service)
-
-        svc = cast("BaseService", super().__call__(*args, **kwargs))
-        ServiceRegistry().register_service(svc)
-        return cast("BaseServiceMeta", svc)
-
 
 class BaseService(BaseTypedModel, metaclass=BaseServiceMeta):
     """Base service class.

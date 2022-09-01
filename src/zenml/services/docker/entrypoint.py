@@ -11,74 +11,45 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
 #  or implied. See the License for the specific language governing
 #  permissions and limitations under the License.
-"""Implementation of a docker daemon entrypoint.
+"""Implementation of an entrypoint for a dockerized ZenML service.
 
 This executable file is utilized as an entrypoint for all ZenML services
-that are implemented as locally running daemon processes.
+that are implemented as docker containers.
 """
-
-import os
 
 import click
 
-from zenml.utils.daemon import daemonize
+from zenml.integrations.registry import integration_registry
+from zenml.logger import get_logger
+from zenml.services import ServiceRegistry
+from zenml.services.docker.docker_service import DockerService
 
+logger = get_logger(__name__)
 
 @click.command()
 @click.option("--config-file", required=True, type=click.Path(exists=True))
-@click.option("--log-file", required=False, type=click.Path())
-@click.option("--pid-file", required=False, type=click.Path())
 def run(
     config_file: str,
-    log_file: str,
-    pid_file: str,
 ) -> None:
-    """Runs a ZenML service as a daemon process.
+    """Runs a ZenML service as a dockerized process.
 
     Args:
         config_file: path to the configuration file for the service.
-        log_file: path to the log file for the service.
-        pid_file: path to the PID file for the service.
     """
+    logger.info("Loading service configuration from %s", config_file)
+    with open(config_file, "r") as f:
+        config = f.read()
 
-    @daemonize(
-        log_file=log_file, pid_file=pid_file, working_directory=os.getcwd()
-    )
-    def launch_service(service_config_file: str) -> None:
-        """Instantiate and launch a ZenML docker service from its configuration file.
+    integration_registry.activate_integrations()
 
-        Args:
-            service_config_file: the path to the service configuration file.
-
-        Raises:
-            TypeError: if the service configuration file is the wrong type.
-        """
-        # doing zenml imports here to avoid polluting the stdout/stderr
-        # with messages before daemonization is complete
-        from zenml.integrations.registry import integration_registry
-        from zenml.logger import get_logger
-        from zenml.services import DockerDaemonService, ServiceRegistry
-
-        logger = get_logger(__name__)
-
-        logger.info(
-            "Loading service daemon configuration from %s", service_config_file
+    logger.debug("Running service with configuration:\n %s", config)
+    service = ServiceRegistry().load_service_from_json(config)
+    if not isinstance(service, DockerService):
+        raise TypeError(
+            f"Expected service type DockerService but got "
+            f"{type(service)} instead"
         )
-        with open(service_config_file, "r") as f:
-            config = f.read()
-
-        integration_registry.activate_integrations()
-
-        logger.debug("Running service daemon with configuration:\n %s", config)
-        service = ServiceRegistry().load_service_from_json(config)
-        if not isinstance(service, DockerDaemonService):
-            raise TypeError(
-                f"Expected service type DockerDaemonService but got "
-                f"{type(service)} instead"
-            )
-        service.run()
-
-    launch_service(config_file)
+    service.run()
 
 
 if __name__ == "__main__":

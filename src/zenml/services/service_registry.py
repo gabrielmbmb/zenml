@@ -31,13 +31,12 @@ class ServiceRegistry(metaclass=SingletonMetaClass):
     """Registry of service types and service instances.
 
     The service registry provides a central place to register service types
-    as well as service instances.
+    and instantiate services.
     """
 
     def __init__(self) -> None:
         """Initialize the service registry."""
         self.service_types: Dict[ServiceType, Type["BaseService"]] = {}
-        self.services: Dict[UUID, "BaseService"] = {}
 
     def register_service_type(self, cls: Type["BaseService"]) -> None:
         """Registers a new service type.
@@ -98,76 +97,14 @@ class ServiceRegistry(metaclass=SingletonMetaClass):
         """
         return service_type in self.service_types
 
-    def register_service(self, service: "BaseService") -> None:
-        """Registers a new service instance.
-
-        Args:
-            service: a BaseService instance.
-
-        Raises:
-            TypeError: if the service instance has a service type that is not
-                registered.
-            Exception: if a preexisting service is found for that UUID.
-        """
-        service_type = service.SERVICE_TYPE
-        if service_type not in self.service_types:
-            raise TypeError(f"Service type `{service_type}` is not registered.")
-
-        if service.uuid not in self.services:
-            self.services[service.uuid] = service
-            logger.debug(f"Registered service {service}")
-        else:
-            existing_service = self.services[service.uuid]
-            raise Exception(
-                f"Found existing service {existing_service} for UUID: "
-                f"{service.uuid}. Skipping registration for service "
-                f"{service}."
-            )
-
-    def get_service(self, uuid: UUID) -> Optional["BaseService"]:
-        """Get the service instance registered for a UUID.
-
-        Args:
-            uuid: service instance identifier.
-
-        Returns:
-            `BaseService` instance that was registered for the UUID or
-            None, if no matching service instance was found.
-        """
-        return self.services.get(uuid)
-
-    def get_services(self) -> Dict[UUID, "BaseService"]:
-        """Get all service instances currently registered.
-
-        Returns:
-            Dictionary of `BaseService` instances indexed by their UUID with
-            all services that are currently registered.
-        """
-        return self.services.copy()
-
-    def service_is_registered(self, uuid: UUID) -> bool:
-        """Check if a service instance is registered.
-
-        Args:
-            uuid: service instance identifier.
-
-        Returns:
-            True, if a service instance is registered for the UUID, False
-            otherwise.
-        """
-        return uuid in self.services
-
     def load_service_from_dict(
         self, service_dict: Dict[str, Any]
     ) -> "BaseService":
         """Load a service instance from its dict representation.
 
-        Creates, registers and returns a service instantiated from the dict
+        Creates and returns a service instantiated from the dict
         representation of the service configuration and last known status
         information.
-
-        If an existing service instance with the same UUID is already
-        present in the service registry, it is returned instead.
 
         Args:
             service_dict: dict representation of the service configuration and
