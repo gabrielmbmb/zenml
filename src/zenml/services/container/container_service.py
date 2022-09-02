@@ -23,6 +23,8 @@ from abc import abstractmethod
 from typing import Dict, Generator, List, Optional, Tuple
 
 import docker
+import docker.errors as docker_errors
+from docker.models.containers import Container
 import psutil
 from pydantic import Field
 from zenml.constants import ENV_ZENML_CONFIG_PATH
@@ -46,8 +48,11 @@ logger = get_logger(__name__)
 
 
 SERVICE_CONFIG_FILE_NAME = "service.json"
-SERVICE_CONTAINER_GLOBAL_CONFIG_PATH = ".zenconfig"
-DOCKER_ZENML_SERVER_DEFAULT_IMAGE = "zenml/zenml"
+SERVICE_CONTAINER_GLOBAL_CONFIG_DIR = "zenconfig"
+SERVICE_CONTAINER_GLOBAL_CONFIG_PATH = os.path.join(
+    "/", SERVICE_CONTAINER_GLOBAL_CONFIG_DIR
+)
+DOCKER_ZENML_SERVER_DEFAULT_IMAGE = "zenmldocker/zenml"
 ENV_ZENML_SERVICE_CONTAINER = "ZENML_SERVICE_CONTAINER"
 
 
@@ -138,8 +143,8 @@ class ContainerService(BaseService):
         def run(self) -> None:
             time.sleep(self.config.wake_up_after)
 
-    daemon = SleepingService(config=SleepingServiceConfig(wake_up_after=10))
-    daemon.start()
+    service = SleepingService(config=SleepingServiceConfig(wake_up_after=10))
+    service.start()
     ```
 
     NOTE: the `SleepingService` class and its parent module have to be
@@ -212,22 +217,27 @@ class ContainerService(BaseService):
             providing additional information about that state (e.g. a
             description of the error, if one is encountered).
         """
-        container: Optional[docker.containers.Container] = None
+        container: Optional[Container] = None
         try:
-            container = self.docker_client.containers.get(self.container_id())
-        except docker.errors.NotFound:
+            container = self.docker_client.containers.get(self.container_id)
+        except docker_errors.NotFound:
             # container doesn't exist yet or was removed
             pass
 
         if container is None:
             return ServiceState.INACTIVE, "Docker container is not present"
-        elif container.status != "running":
+        elif container.status == "running":
+            return ServiceState.ACTIVE, "Docker container is running"
+        elif container.status == "exited":
+            return (
+                ServiceState.ERROR,
+                "Docker container has exited.",
+            )
+        else:
             return (
                 ServiceState.INACTIVE,
                 f"Docker container is {container.status}",
             )
-        else:
-            return ServiceState.ACTIVE, "Docker container is running"
 
     def _setup_runtime_path(self) -> None:
         """Set up the runtime path for the service.
@@ -294,14 +304,14 @@ class ContainerService(BaseService):
         command_env = {
             ENV_ZENML_SERVICE_CONTAINER: "true",
         }
-        for k, v in os.environ.items:
+        for k, v in os.environ.items():
             if k.startswith("ZENML_"):
                 command_env[k] = v
         # the global configuration is mounted into the container at a
         # different location
-        command_env[ENV_ZENML_CONFIG_PATH] = os.path.join(
-            SERVICE_CONTAINER_PATH, SERVICE_CONTAINER_GLOBAL_CONFIG_PATH
-        )
+        command_env[
+            ENV_ZENML_CONFIG_PATH
+        ] = SERVICE_CONTAINER_GLOBAL_CONFIG_PATH
 
         return command, command_env
 
@@ -331,16 +341,14 @@ class ContainerService(BaseService):
         }
 
         volumes[get_global_config_directory()] = {
-            "bind": os.path.join(
-                SERVICE_CONTAINER_PATH, SERVICE_CONTAINER_GLOBAL_CONFIG_PATH
-            ),
+            "bind": SERVICE_CONTAINER_GLOBAL_CONFIG_PATH,
             "mode": "rw",
         }
 
         return volumes
 
     @property
-    def container(self) -> Optional[docker.containers.Container]:
+    def container(self) -> Optional[Container]:
         """Get the docker container for the service.
 
         Returns:
@@ -349,7 +357,7 @@ class ContainerService(BaseService):
         """
         try:
             return self.docker_client.containers.get(self.container_id)
-        except docker.errors.NotFound:
+        except docker_errors.NotFound:
             # container doesn't exist yet or was removed
             return None
 
@@ -375,6 +383,17 @@ class ContainerService(BaseService):
             container.remove(force=True)
 
         logger.debug("Starting container for service '%s'...", self)
+
+        try:
+            self.docker_client.images.get(self.config.image)
+        except docker_errors.ImageNotFound:
+            logger.debug(
+                "Pulling container image '%s' for service '%s'...",
+                self.config.image,
+                self,
+            )
+            self.docker_client.images.pull(self.config.image)
+
         self._setup_runtime_path()
 
         ports: Dict[int, Optional[int]] = {}
@@ -393,20 +412,22 @@ class ContainerService(BaseService):
                 detach=True,
                 volumes=volumes,
                 environment=env,
-                remove=True,
-                auto_remove=True,
+                remove=False,
+                auto_remove=False,
                 ports=ports,
                 labels={
                     "zenml-service-uuid": str(self.uuid),
                 },
+                user=os.getuid(),
+                group_add=[os.getgid()],
                 working_dir=SERVICE_CONTAINER_PATH,
             )
             logger.debug(
-                "Docker container for service '%s' started with ID: %d",
+                "Docker container for service '%s' started with ID: %s",
                 self,
                 self.container_id,
             )
-        except docker.errors.DockerException as e:
+        except docker_errors.DockerException as e:
             logger.error(
                 "Docker container for service '%s' failed to start: %s",
                 self,

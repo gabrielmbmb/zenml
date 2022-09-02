@@ -101,6 +101,7 @@ class BaseServiceMeta(BaseTypedModelMeta):
             ServiceRegistry().register_service_type(cls)
         return cls
 
+
 class BaseService(BaseTypedModel, metaclass=BaseServiceMeta):
     """Base service class.
 

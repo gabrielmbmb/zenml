@@ -13,7 +13,7 @@
 #  permissions and limitations under the License.
 """Zen Server docker deployer implementation."""
 
-from typing import ClassVar, List, Optional, cast
+from typing import ClassVar, Generator, List, Optional, cast
 from zenml.config.global_config import GlobalConfiguration
 from zenml.enums import StoreType
 
@@ -25,6 +25,7 @@ from zenml.zen_server.deploy.base_deployer import (
     BaseServerDeploymentStatus,
 )
 from zenml.zen_server.deploy.docker.docker_zen_server import (
+    DOCKER_ZENML_SERVER_DEFAULT_TIMEOUT,
     DockerZenServer,
     DockerServerDeploymentConfig,
 )
@@ -37,16 +38,12 @@ DOCKER_PROVIDER_NAME = "docker"
 
 DOCKER_SERVER_SINGLETON_NAME = "docker"
 
-DOCKER_DEFAULT_TIMEOUT = 60
-
 
 class DockerServerDeploymentStatus(BaseServerDeploymentStatus):
     """Docker server deployment status.
 
     Attributes:
     """
-
-    url: str
 
 
 class DockerServerDeployment(BaseServerDeployment):
@@ -93,25 +90,18 @@ class DockerServerDeployer(BaseServerDeployer):
 
         service = DockerZenServer.get_service()
         if service is not None:
-            if service.config.server == docker_config:
-                logger.info(
-                    "The docker ZenML server is already running with the same "
-                    "configuration."
-                )
-            else:
-                logger.info(
-                    "The docker ZenML server is already running with a "
-                    "different configuration."
-                )
-                logger.info("Updating the docker ZenML server.")
-                service.stop(timeout=timeout or DOCKER_DEFAULT_TIMEOUT)
-                service.update(docker_config)
+            service.update(
+                docker_config,
+                timeout=timeout or DOCKER_ZENML_SERVER_DEFAULT_TIMEOUT,
+            )
         else:
             logger.info("Starting the docker ZenML server.")
             service = DockerZenServer(docker_config)
 
         if not service.is_running:
-            service.start(timeout=timeout or DOCKER_DEFAULT_TIMEOUT)
+            service.start(
+                timeout=timeout or DOCKER_ZENML_SERVER_DEFAULT_TIMEOUT
+            )
 
         if connect:
             self.connect(
@@ -137,7 +127,7 @@ class DockerServerDeployer(BaseServerDeployer):
         self.disconnect(server)
 
         logger.info("Shutting down the docker ZenML server.")
-        service.stop(timeout=timeout or DOCKER_DEFAULT_TIMEOUT)
+        service.stop(timeout=timeout or DOCKER_ZENML_SERVER_DEFAULT_TIMEOUT)
 
     def status(self, server: str) -> BaseServerDeploymentStatus:
         """Get the status of the docker ZenML server instance.
@@ -180,7 +170,9 @@ class DockerServerDeployer(BaseServerDeployer):
         )
 
         if gc.store == store_config:
-            logger.info("ZenML is already connected to the docker ZenML server.")
+            logger.info(
+                "ZenML is already connected to the docker ZenML server."
+            )
             return
 
         gc.set_store(store_config)
@@ -249,7 +241,7 @@ class DockerServerDeployer(BaseServerDeployer):
         service_status = service.check_status()
         gc = GlobalConfiguration()
         url = service.zen_server_url or ""
-        connected = url and gc.store and gc.store.url == url
+        connected = url != "" and gc.store is not None and gc.store.url == url
 
         return DockerServerDeployment(
             config=service.config,
@@ -272,3 +264,31 @@ class DockerServerDeployer(BaseServerDeployer):
             return [docker_server]
         except KeyError:
             return []
+
+    def get_logs(
+        self, server: str, follow: bool = False, tail: Optional[int] = None
+    ) -> Generator[str, bool, None]:
+        """Get the server deployment logs.
+
+        Args:
+            server: The server deployment name, identifier or URL.
+            follow: if True, the logs will be streamed as they are written
+            tail: only retrieve the last NUM lines of log output.
+
+        Returns:
+            A generator that can be accessed to get the service logs.
+
+        Raises:
+            KeyError: If the server deployment is not found.
+        """
+
+        if server != DOCKER_SERVER_SINGLETON_NAME:
+            raise KeyError(
+                f"The {server} docker ZenML server could not be found."
+            )
+
+        service = DockerZenServer.get_service()
+        if service is None:
+            raise KeyError("The docker ZenML server could not be found.")
+
+        return service.get_logs(follow=follow, tail=tail)

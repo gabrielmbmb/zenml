@@ -58,6 +58,8 @@ Select.inherit_cache = True  # type: ignore
 logger = get_logger(__name__)
 
 
+ZENML_SQLITE_DB_FILENAME = "zenml.db"
+
 class ZenUser(SQLModel, table=True):
     """SQL Model for users."""
 
@@ -323,7 +325,7 @@ class SqlZenStore(BaseZenStore):
         Returns:
             The local SQL url for the given path.
         """
-        return f"sqlite:///{path}/zenml.db"
+        return f"sqlite:///{path}/{ZENML_SQLITE_DB_FILENAME}"
 
     @staticmethod
     def validate_url(url: str) -> str:

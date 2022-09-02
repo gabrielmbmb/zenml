@@ -13,7 +13,9 @@
 #  permissions and limitations under the License.
 """Zen Server local deployer implementation."""
 
-from typing import ClassVar, List, Optional, cast
+from typing import Any, ClassVar, Generator, List, Optional, cast
+
+from zenml import __version__
 from zenml.config.global_config import GlobalConfiguration
 from zenml.enums import StoreType
 
@@ -25,6 +27,7 @@ from zenml.zen_server.deploy.base_deployer import (
     BaseServerDeploymentStatus,
 )
 from zenml.zen_server.deploy.local.local_zen_server import (
+    LOCAL_ZENML_SERVER_DEFAULT_TIMEOUT,
     LocalZenServer,
     LocalServerDeploymentConfig,
 )
@@ -37,16 +40,12 @@ LOCAL_PROVIDER_NAME = "local"
 
 LOCAL_SERVER_SINGLETON_NAME = "local"
 
-LOCAL_DEFAULT_TIMEOUT = 30
-
 
 class LocalServerDeploymentStatus(BaseServerDeploymentStatus):
     """Local server deployment status.
 
     Attributes:
     """
-
-    url: str
 
 
 class LocalServerDeployment(BaseServerDeployment):
@@ -65,6 +64,27 @@ class LocalServerDeployer(BaseServerDeployer):
     """Local ZenML server deployer."""
 
     PROVIDER: ClassVar[str] = LOCAL_PROVIDER_NAME
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.check_local_server_dependencies()
+        super().__init__(*args, **kwargs)
+
+    @staticmethod
+    def check_local_server_dependencies():
+        """Check if local server dependencies are installed."""
+
+        try:
+            # Make sure the ZenServer dependencies are installed
+            import fastapi  # noqa
+            import uvicorn  # noqa
+        except ImportError:
+            # Unable to import the ZenServer dependencies.
+            raise RuntimeError(
+                "The ZenML server seems to be unavailable on your machine. "
+                "This is probably because ZenML was installed without the optional "
+                "ZenServer dependencies. To install the missing dependencies "
+                f"run `pip install zenml=={__version__}[server]`."
+            )
 
     def up(
         self,
@@ -93,25 +113,14 @@ class LocalServerDeployer(BaseServerDeployer):
 
         service = LocalZenServer.get_service()
         if service is not None:
-            if service.config.server == local_config:
-                logger.info(
-                    "The local ZenML server is already running with the same "
-                    "configuration."
-                )
-            else:
-                logger.info(
-                    "The local ZenML server is already running with a "
-                    "different configuration."
-                )
-                logger.info("Updating the local ZenML server.")
-                service.stop(timeout=timeout or LOCAL_DEFAULT_TIMEOUT)
-                service.update(local_config)
+            service.update(
+                local_config,
+                timeout=timeout or LOCAL_ZENML_SERVER_DEFAULT_TIMEOUT,
+            )
         else:
             logger.info("Starting the local ZenML server.")
             service = LocalZenServer(local_config)
-
-        if not service.is_running:
-            service.start(timeout=timeout or LOCAL_DEFAULT_TIMEOUT)
+            service.start(timeout=timeout or LOCAL_ZENML_SERVER_DEFAULT_TIMEOUT)
 
         if connect:
             self.connect(
@@ -137,7 +146,7 @@ class LocalServerDeployer(BaseServerDeployer):
         self.disconnect(server)
 
         logger.info("Shutting down the local ZenML server.")
-        service.stop(timeout=timeout or LOCAL_DEFAULT_TIMEOUT)
+        service.stop(timeout=timeout or LOCAL_ZENML_SERVER_DEFAULT_TIMEOUT)
 
     def status(self, server: str) -> BaseServerDeploymentStatus:
         """Get the status of the local ZenML server instance.
@@ -272,3 +281,31 @@ class LocalServerDeployer(BaseServerDeployer):
             return [local_server]
         except KeyError:
             return []
+
+    def get_logs(
+        self, server: str, follow: bool = False, tail: Optional[int] = None
+    ) -> Generator[str, bool, None]:
+        """Get the server deployment logs.
+
+        Args:
+            server: The server deployment name, identifier or URL.
+            follow: if True, the logs will be streamed as they are written
+            tail: only retrieve the last NUM lines of log output.
+
+        Returns:
+            A generator that can be accessed to get the service logs.
+
+        Raises:
+            KeyError: If the server deployment is not found.
+        """
+
+        if server != LOCAL_SERVER_SINGLETON_NAME:
+            raise KeyError(
+                f"The {server} local ZenML server could not be found."
+            )
+
+        service = LocalZenServer.get_service()
+        if service is None:
+            raise KeyError("The local ZenML server could not be found.")
+
+        return service.get_logs(follow=follow, tail=tail)

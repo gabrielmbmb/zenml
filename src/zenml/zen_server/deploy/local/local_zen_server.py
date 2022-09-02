@@ -56,6 +56,8 @@ LOCAL_ZENML_SERVER_GLOBAL_CONFIG_PATH = os.path.join(
     LOCAL_ZENML_SERVER_CONFIG_PATH, ".zenconfig"
 )
 
+LOCAL_ZENML_SERVER_DEFAULT_TIMEOUT = 30
+
 
 class LocalServerDeploymentConfig(BaseServerDeploymentConfig):
     """Local server deployment configuration.
@@ -69,16 +71,6 @@ class LocalServerDeploymentConfig(BaseServerDeploymentConfig):
     address: Union[
         ipaddress.IPv4Address, ipaddress.IPv6Address
     ] = ipaddress.IPv4Address(DEFAULT_LOCAL_SERVICE_IP_ADDRESS)
-
-
-class LocalZenServerServiceConfig(LocalDaemonServiceConfig):
-    """Local ZenMl server daemon service configuration.
-
-    Attributes:
-        server: local ZenML server deployment configuration.
-    """
-
-    server: LocalServerDeploymentConfig
 
 
 class LocalZenServer(LocalDaemonService):
@@ -96,7 +88,7 @@ class LocalZenServer(LocalDaemonService):
         description="Local ZenML server deployment",
     )
 
-    config: LocalZenServerServiceConfig
+    config: LocalDaemonServiceConfig
     endpoint: LocalDaemonServiceEndpoint
 
     def __init__(
@@ -131,7 +123,7 @@ class LocalZenServer(LocalDaemonService):
         cls,
         config: LocalServerDeploymentConfig,
     ) -> Tuple[
-        LocalZenServerServiceConfig,
+        LocalDaemonServiceConfig,
         LocalDaemonServiceEndpointConfig,
         HTTPEndpointHealthMonitorConfig,
     ]:
@@ -144,8 +136,7 @@ class LocalZenServer(LocalDaemonService):
             The service, service endpoint and endpoint monitor configuration.
         """
         return (
-            LocalZenServerServiceConfig(
-                server=config,
+            LocalDaemonServiceConfig(
                 root_runtime_path=LOCAL_ZENML_SERVER_CONFIG_PATH,
                 singleton=True,
             ),
@@ -178,6 +169,22 @@ class LocalZenServer(LocalDaemonService):
         gc.copy_configuration(
             config_path=LOCAL_ZENML_SERVER_GLOBAL_CONFIG_PATH,
             store_config=gc.get_default_store(),
+        )
+
+    def _is_config_update(
+        self, new_config: LocalServerDeploymentConfig
+    ) -> bool:
+        """Check if the new configuration is different from the running configuration.
+
+        Returns:
+            True, if the new configuration is different from the running
+            configuration, False otherwise.
+        """
+        config, endpoint_cfg, monitor_cfg = self._get_configuration(new_config)
+        return (
+            config != self.config
+            or endpoint_cfg != self.endpoint.config
+            or monitor_cfg != self.endpoint.monitor.config
         )
 
     @classmethod
@@ -248,8 +255,8 @@ class LocalZenServer(LocalDaemonService):
         try:
             uvicorn.run(
                 ZEN_SERVER_ENTRYPOINT,
-                host=str(self.config.server.address),
-                port=self.config.server.port,
+                host=self.endpoint.config.ip_address,
+                port=self.endpoint.config.port,
                 log_level="info",
             )
         except KeyboardInterrupt:
@@ -267,14 +274,43 @@ class LocalZenServer(LocalDaemonService):
             return None
         return self.endpoint.status.uri
 
-    def update(self, config: LocalServerDeploymentConfig) -> None:
+    def update(
+        self, config: LocalServerDeploymentConfig, timeout: int = 0
+    ) -> None:
         """Update the ZenServer configuration.
+
 
         Args:
             config: new server configuration.
+            timeout: amount of time to wait for the service to start/restart.
+                If set to 0, the method will return immediately after checking
+                the service status.
         """
-        (
-            self.config,
-            self.endpoint.config,
-            self.endpoint.monitor.config,
-        ) = self._get_configuration(config)
+        new_config, new_endpoint_cfg, new_monitor_cfg = self._get_configuration(
+            config
+        )
+        if (
+            new_config == self.config
+            and new_endpoint_cfg == self.endpoint.config
+            and new_monitor_cfg == self.endpoint.monitor.config
+        ):
+            logger.info(
+                "The local ZenML server is already configured with the same "
+                "parameters."
+            )
+        else:
+            logger.info(
+                "The local ZenML server is already configured with "
+                "different parameters. Restarting..."
+            )
+            self.stop(timeout=timeout or LOCAL_ZENML_SERVER_DEFAULT_TIMEOUT)
+
+            self.config, self.endpoint.config, self.endpoint.monitor.config = (
+                new_config,
+                new_endpoint_cfg,
+                new_monitor_cfg,
+            )
+
+        if not self.is_running:
+            logger.info("Starting the local ZenML server.")
+            self.start(timeout=timeout)

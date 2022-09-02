@@ -33,29 +33,45 @@ from zenml.services import (
     BaseService,
     ServiceConfig,
     BaseServiceEndpoint,
+    ContainerService,
+    ContainerServiceConfig,
+    ContainerServiceEndpoint,
+    ContainerServiceEndpointConfig,
     ServiceEndpointConfig,
     ServiceEndpointProtocol,
     ServiceType,
 )
+from zenml.services.container.container_service import (
+    SERVICE_CONTAINER_GLOBAL_CONFIG_DIR,
+    SERVICE_CONTAINER_GLOBAL_CONFIG_PATH,
+)
+from zenml.services.container.entrypoint import SERVICE_CONTAINER_PATH
 from zenml.utils.io_utils import get_global_config_directory
 from zenml.zen_server.deploy.base_deployer import BaseServerDeploymentConfig
+from zenml.zen_stores.sql_zen_store import ZENML_SQLITE_DB_FILENAME, SqlZenStore
 
 logger = get_logger(__name__)
 
 ZEN_SERVER_HEALTHCHECK_URL_PATH = "health"
 
-DOCKER_ZENML_SERVER_CONFIG_PATH = os.path.join(
-    get_global_config_directory(),
+DOCKER_ZENML_SERVER_CONFIG_SUBPATH = os.path.join(
     "zen_server",
     "docker",
+)
+
+DOCKER_ZENML_SERVER_CONFIG_PATH = os.path.join(
+    get_global_config_directory(),
+    DOCKER_ZENML_SERVER_CONFIG_SUBPATH,
 )
 DOCKER_ZENML_SERVER_CONFIG_FILENAME = os.path.join(
     DOCKER_ZENML_SERVER_CONFIG_PATH, "service.json"
 )
 DOCKER_ZENML_SERVER_GLOBAL_CONFIG_PATH = os.path.join(
-    DOCKER_ZENML_SERVER_CONFIG_PATH, ".zenconfig"
+    DOCKER_ZENML_SERVER_CONFIG_PATH, SERVICE_CONTAINER_GLOBAL_CONFIG_DIR
 )
-DOCKER_ZENML_SERVER_DEFAULT_IMAGE = "zenml/zenml-server"
+DOCKER_ZENML_SERVER_DEFAULT_IMAGE = "zenmldocker/zenml-server"
+
+DOCKER_ZENML_SERVER_DEFAULT_TIMEOUT = 60
 
 
 class DockerServerDeploymentConfig(BaseServerDeploymentConfig):
@@ -66,21 +82,11 @@ class DockerServerDeploymentConfig(BaseServerDeploymentConfig):
         image: The Docker image to use for the server.
     """
 
-    port: int = 8237
+    port: int = 8238
     image: str = DOCKER_ZENML_SERVER_DEFAULT_IMAGE
 
 
-class DockerZenServerServiceConfig(ServiceConfig):
-    """Docker ZenMl server service configuration.
-
-    Attributes:
-        server: docker ZenML server deployment configuration.
-    """
-
-    server: DockerServerDeploymentConfig
-
-
-class DockerZenServer(BaseService):
+class DockerZenServer(ContainerService):
     """Service that can be used to start a docker ZenServer.
 
     Attributes:
@@ -95,8 +101,8 @@ class DockerZenServer(BaseService):
         description="Docker ZenML server deployment",
     )
 
-    config: DockerZenServerServiceConfig
-    endpoint: BaseServiceEndpoint
+    config: ContainerServiceConfig
+    endpoint: ContainerServiceEndpoint
 
     def __init__(
         self,
@@ -115,7 +121,7 @@ class DockerZenServer(BaseService):
                 server_config
             )
             attrs["config"] = config
-            endpoint = BaseServiceEndpoint(
+            endpoint = ContainerServiceEndpoint(
                 config=endpoint_cfg,
                 monitor=HTTPEndpointHealthMonitor(
                     config=monitor_cfg,
@@ -130,8 +136,8 @@ class DockerZenServer(BaseService):
         cls,
         config: DockerServerDeploymentConfig,
     ) -> Tuple[
-        DockerZenServerServiceConfig,
-        ServiceEndpointConfig,
+        ContainerServiceConfig,
+        ContainerServiceEndpointConfig,
         HTTPEndpointHealthMonitorConfig,
     ]:
         """Construct the service configuration from a server deployment configuration.
@@ -143,12 +149,15 @@ class DockerZenServer(BaseService):
             The service, service endpoint and endpoint monitor configuration.
         """
         return (
-            DockerZenServerServiceConfig(
-                server=config,
+            ContainerServiceConfig(
                 root_runtime_path=DOCKER_ZENML_SERVER_CONFIG_PATH,
                 singleton=True,
+                image=config.image,
             ),
-            ServiceEndpointConfig(
+            ContainerServiceEndpointConfig(
+                protocol=ServiceEndpointProtocol.HTTP,
+                port=config.port,
+                allocate_port=False,
             ),
             HTTPEndpointHealthMonitorConfig(
                 healthcheck_uri_path=ZEN_SERVER_HEALTHCHECK_URL_PATH,
@@ -161,7 +170,7 @@ class DockerZenServer(BaseService):
 
         The docker ZenML server global configuration is a copy of the docker
         global configuration with the store configuration set to point to the
-        docker store.
+        local store.
 
         Returns:
             The path to the ZenML server global configuration.
@@ -169,10 +178,15 @@ class DockerZenServer(BaseService):
         gc = GlobalConfiguration()
 
         # this creates a copy of the global configuration with the store
-        # set to the docker store and saves it to the server configuration path
+        # set to where the default local store is mounted in the docker
+        # container and saves it to the server configuration path
+        store_config = gc.get_default_store()
+        store_config.url = SqlZenStore.get_local_url(
+            SERVICE_CONTAINER_GLOBAL_CONFIG_PATH
+        )
         gc.copy_configuration(
             config_path=DOCKER_ZENML_SERVER_GLOBAL_CONFIG_PATH,
-            store_config=gc.get_default_store(),
+            store_config=store_config,
         )
 
     @classmethod
@@ -191,18 +205,22 @@ class DockerZenServer(BaseService):
         except FileNotFoundError:
             return None
 
-    def _get_daemon_cmd(self) -> Tuple[List[str], Dict[str, str]]:
-        """Get the command to start the daemon.
+    def _get_container_cmd(self) -> Tuple[List[str], Dict[str, str]]:
+        """Get the command to run the service container.
 
-        Overrides the base class implementation to add the environment variable
-        that forces the ZenML server to use the copied global config.
+        Override the inherited method to use a ZenML global config path inside
+        the container that points to the global config copy instead of the
+        one mounted from the local host.
 
         Returns:
-            The command to start the daemon and the environment variables to
-            set for the command.
+            Command needed to launch the docker container and the environment
+            variables to set, in the formats accepted by subprocess.Popen.
         """
-        cmd, env = super()._get_daemon_cmd()
-        env[ENV_ZENML_CONFIG_PATH] = DOCKER_ZENML_SERVER_GLOBAL_CONFIG_PATH
+        cmd, env = super()._get_container_cmd()
+        env[ENV_ZENML_CONFIG_PATH] = os.path.join(
+            SERVICE_CONTAINER_PATH,
+            SERVICE_CONTAINER_GLOBAL_CONFIG_DIR,
+        )
         return cmd, env
 
     def provision(self) -> None:
@@ -243,8 +261,8 @@ class DockerZenServer(BaseService):
         try:
             uvicorn.run(
                 ZEN_SERVER_ENTRYPOINT,
-                host=str(self.config.server.address),
-                port=self.config.server.port,
+                host="0.0.0.0",  # self.endpoint.config.ip_address,
+                port=self.endpoint.config.port,
                 log_level="info",
             )
         except KeyboardInterrupt:
@@ -262,14 +280,43 @@ class DockerZenServer(BaseService):
             return None
         return self.endpoint.status.uri
 
-    def update(self, config: DockerServerDeploymentConfig) -> None:
+    def update(
+        self, config: DockerServerDeploymentConfig, timeout: int = 0
+    ) -> None:
         """Update the ZenServer configuration.
+
 
         Args:
             config: new server configuration.
+            timeout: amount of time to wait for the service to start/restart.
+                If set to 0, the method will return immediately after checking
+                the service status.
         """
-        (
-            self.config,
-            self.endpoint.config,
-            self.endpoint.monitor.config,
-        ) = self._get_configuration(config)
+        new_config, new_endpoint_cfg, new_monitor_cfg = self._get_configuration(
+            config
+        )
+        if (
+            new_config == self.config
+            and new_endpoint_cfg == self.endpoint.config
+            and new_monitor_cfg == self.endpoint.monitor.config
+        ):
+            logger.info(
+                "The docker ZenML server is already configured with the same "
+                "parameters."
+            )
+        else:
+            logger.info(
+                "The dcoker ZenML server is already configured with "
+                "different parameters. Restarting..."
+            )
+            self.stop(timeout=timeout or DOCKER_ZENML_SERVER_DEFAULT_TIMEOUT)
+
+            self.config, self.endpoint.config, self.endpoint.monitor.config = (
+                new_config,
+                new_endpoint_cfg,
+                new_monitor_cfg,
+            )
+
+        if not self.is_running:
+            logger.info("Starting the docker ZenML server.")
+            self.start(timeout=timeout)
