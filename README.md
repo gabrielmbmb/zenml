@@ -74,7 +74,7 @@
     ·
     <a href="#-meet-the-team">Meet the Team</a>
     <br />
-    🎉 Version 0.13.1 is out. Check out the release notes
+    🎉 Version 0.13.2 is out. Check out the release notes
     <a href="https://github.com/zenml-io/zenml/releases">here</a>.
     <br />
     <br />
@@ -251,7 +251,7 @@ zenml stack export <STACK_NAME> <FILENAME.yaml>
 
 Similarly, you can import a stack by running:
 ```
-zenml stack import <STACK_NAME> <FILENAME.yaml>
+zenml stack import <STACK_NAME> -f <FILENAME.yaml>
 ```
 
 Learn more on importing/exporting stacks [here](https://docs.zenml.io/collaborate/stack-export-import).

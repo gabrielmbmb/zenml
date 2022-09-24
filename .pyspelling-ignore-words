@@ -120,6 +120,7 @@ DataFrame's
 DataFrames
 DataLoader
 DataQualityProfileSection
+Databricks
 DatasetProfile
 DatasetProfileView
 Deepchecks
@@ -372,6 +373,7 @@ PathType
 PermissionError
 PillowImageMaterializer
 PipelineConfigurationError
+PipelineDeployment
 PipelineDockerImageBuilder
 PipelineInterfaceError
 PipelineNode
@@ -412,6 +414,7 @@ RedPill
 Reproducibility
 ResourceConfiguration
 ResourceConfigurations
+ResourceSettings
 RichHandler
 Roadmap
 RoleBinding
@@ -474,6 +477,7 @@ ServiceConfig
 ServicePrincipal
 ServiceStatus
 ServiceType
+SettingsResolvingError
 SingleDatasetCheck
 SingletonMetaClass
 SlackAlerter
@@ -529,6 +533,7 @@ TFServing
 TFTrainer
 TFX
 TFX's
+TLS
 TODO
 Tekton
 TempPathFactory
@@ -734,6 +739,7 @@ daemonization
 daemonize
 daemonizer
 dango
+databricks
 datadir
 datadrift
 dataframe
@@ -829,6 +835,7 @@ fcp
 fd
 feedforward
 fff
+ffmpeg
 fileio
 filepath
 filesize
@@ -955,6 +962,8 @@ kwarg
 kwargs
 len
 libcudart
+libsm
+libxext
 lifecycle
 lightgbm
 linux
@@ -1207,6 +1216,7 @@ tfx
 thinknum
 tiangolo
 timedelta
+tls
 tmp
 todo
 todos
@@ -1282,5 +1292,3 @@ zenml
 zenmldocker
 zenmlregistry
 zenserver
-databricks
-Databricks

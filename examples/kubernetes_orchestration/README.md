@@ -37,7 +37,7 @@ an ECR container registry, and a S3 bucket for artifact storage.
 If you want to follow this example line by line, you need to spin up each of
 the corresponding AWS resources first.
 You can provision these resources manually by following the
-[ZenML cloud guide](https://docs.zenml.io/cloud-guide/overview).
+[ZenML cloud guide](../../docs/book/stack-deployment-guide/overview.md).
 For detailed instructions, see our
 [Kubernetes orchestrator blog post](https://blog.zenml.io/k8s-orchestrator/).
 
@@ -54,7 +54,7 @@ accordingly.
 
 ### 🚅 That seems like a lot of infrastructure work. Is there a Zen 🧘 way to run this example?
 
-Yes! With [ZenML Stack Recipes](../../docs/book/cloud-guide/stack-recipes.md), you can now provision all the infrastructure you need to run your ZenML pipelines with just a few simple commands.
+Yes! With [ZenML Stack Recipes](../../docs/book/stack-deployment-guide/stack-recipes.md), you can now provision all the infrastructure you need to run your ZenML pipelines with just a few simple commands.
 
 The flow to get started for this example can be the following:
 
@@ -79,10 +79,10 @@ The flow to get started for this example can be the following:
 4. You'll notice that a ZenML stack configuration file gets created 🤯! You can run the following command to import the resources as a ZenML stack, manually. You either need to have the `aws`, `mlflow` and `seldon` integrations installed before importing the stack or you can go into the YAML file and delete the sections on the `experiment_tracker` and `model_deployer` to not have them importer at all.
 
     ```shell
-    zenml stack import <STACK-NAME> <PATH-TO-THE-CREATED-STACK-CONFIG-YAML>
+    zenml stack import <STACK_NAME> -f <PATH_TO_THE_CREATED_STACK_CONFIG_YAML>
 
     # set the imported stack as the active stack
-    zenml stack set <STACK-NAME>
+    zenml stack set <STACK_NAME>
     ```
 
 5. You should now create a secret for the RDS MySQL instance that will allow ZenML to connect to it. Use the following command:
