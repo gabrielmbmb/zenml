@@ -111,6 +111,19 @@ class BaseModelDeployer(StackComponent, ABC):
             A dictionary containing the relevant model server properties.
         """
 
+    @staticmethod
+    @abstractmethod
+    def get_active_model_deployer() -> "BaseModelDeployer":
+        """Abstract method to return the active specific model deployer.
+
+        Returns:
+            The specific model deployer of the active stack.
+
+        Raises:
+            TypeError: if the active stack does not contain an active specific
+            model deployer.
+        """
+
     @abstractmethod
     def find_model_server(
         self,
